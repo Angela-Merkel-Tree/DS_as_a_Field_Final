@@ -1,0 +1,232 @@
+---
+title: "NYPD Shootings"
+author: "Loren Forrester"
+date: "5/17/2022"
+output:
+  pdf_document: default
+  html_document: default
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lubridate)
+library(tidyverse)
+library(scales)
+library(zoo)
+```
+
+
+
+# Importing Data
+
+Imports a dataset detailing NYPD shooting incidents between 2006 and 2021.
+
+```{r def_nypd, results='hide', error = FALSE, warning = FALSE, message = FALSE}
+nypd <- read_csv('https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD')
+```
+
+
+
+# Cleaning Data
+
+Focusing on borough and perpetrator/victim demographics, converts relevant variables to date/factor objects, omits irrelevant columns and incomplete cases including those with unknown and anomalous data entries. Displays a summary of the cleaned dataset.
+
+```{r cleaning_data}
+nypd <- nypd %>%
+  mutate(date = mdy(OCCUR_DATE)) %>%
+  mutate(year = as.factor(year(date))) %>%
+  mutate(month = as.factor(month(date))) %>%
+  mutate(borough = as.factor(BORO)) %>%
+  filter(PERP_AGE_GROUP != 'UNKNOWN') %>%
+  filter(PERP_RACE != 'UNKNOWN') %>%
+  filter(VIC_AGE_GROUP != 'UNKNOWN') %>%
+  filter(VIC_RACE != 'UNKNOWN') %>%
+  filter(PERP_SEX != 'U') %>%
+  filter(VIC_SEX != 'U') %>%
+  filter(PERP_AGE_GROUP != '1020') %>%
+  filter(PERP_AGE_GROUP != '940') %>%
+  filter(PERP_AGE_GROUP != '224') %>%
+  filter(complete.cases(.)) %>%
+  mutate(perp_age = as.factor(PERP_AGE_GROUP)) %>%
+  mutate(perp_sex = as.factor(PERP_SEX)) %>%
+  mutate(perp_race = as.factor(PERP_RACE)) %>%
+  mutate(vic_age = as.factor(VIC_AGE_GROUP)) %>%
+  mutate(vic_sex = as.factor(VIC_SEX)) %>%
+  mutate(vic_race = as.factor(VIC_RACE)) %>%
+  select(c(date, year, month, borough, perp_age, perp_sex, perp_race, vic_age, vic_sex, vic_race))
+  
+summary(nypd)
+```
+
+
+
+# Visualizing Data
+
+Here we'll take a look at a few visualizations of this dataset, first plotting all shootings cumulatively over time, then also examining shootings by borough, as well as by a couple of different demographics.
+
+## All Shootings
+
+```{r grouping_cumulative_data, echo=TRUE, message=FALSE, warning=FALSE}
+nypd_all <- nypd %>%
+  group_by(date) %>%
+  summarize(incidents = n()) %>%
+  mutate(cumulative_incidents = cumsum(incidents)) %>%
+  mutate(days_elapsed = as.numeric(difftime(date, date[[1]], units = 'days'))) %>%
+  ungroup()
+```
+
+```{r visualizing_cum_data}
+ggplot(nypd_all, aes(x = date, y = cumulative_incidents)) +
+  geom_point() +
+  theme(legend.position = 'right', axis.text.x = element_text(angle = 90)) +
+  xlab('Year') +
+  ylab('Cumulative Shooting Incidents') +
+  labs(title = 'NY Shooting Incidents| 2006-2021') +
+  scale_x_date(date_breaks = 'year', labels = date_format('%y'))
+```
+
+## By Borough
+
+Plots shootings in New York by borough over time.
+
+```{r grouping_by_borough, echo=TRUE, message=FALSE, warning=FALSE}
+nypd_by_borough <- nypd %>%
+  group_by(borough, date) %>%
+  summarize(incidents = n()) %>%
+  mutate(cumulative_incidents = cumsum(incidents)) %>%
+  ungroup()
+```
+
+```{r visualizing_by_borough}
+ggplot(nypd_by_borough, aes(x = date, y = cumulative_incidents, color = borough)) +
+  geom_point() +
+  theme(legend.position = 'right', axis.text.x = element_text(angle = 90)) +
+  xlab('Year') +
+  ylab('Cumulative Shooting Incidents') +
+  labs(title = 'NY Shooting Incidents by Borough | 2006-2021') +
+  scale_x_date(date_breaks = 'year', labels = date_format('%y'))
+```
+
+
+## By Age Group
+
+Plots shootings in New York by perpetrator age group over time.
+
+```{r grouping_by_perp_age, echo=TRUE, message=FALSE, warning=FALSE}
+nypd_by_perp_age <- nypd %>%
+  group_by(perp_age, date) %>%
+  summarize(incidents = n()) %>%
+  mutate(cumulative_incidents = cumsum(incidents)) %>%
+  ungroup()
+```
+
+```{r visualizing_by_perp_age}
+ggplot(nypd_by_perp_age, aes(x = date, y = cumulative_incidents, color = perp_age)) +
+  geom_point() +
+  theme(legend.position = 'right', axis.text.x = element_text(angle = 90)) +
+  xlab('Year') +
+  ylab('Cumulative Shooting Incidents') +
+  labs(title = 'NY Shooting Incidents by Perpetrator Age Group | 2006-2021') +
+  scale_x_date(date_breaks = 'year', labels = date_format('%y'))
+```
+
+
+## By Race
+
+Plots shootings in New York by perpetrator race over time.
+
+```{r grouping_by_perp_race, echo=TRUE, message=FALSE, warning=FALSE}
+nypd_by_perp_race <- nypd %>%
+  group_by(perp_race, date) %>%
+  summarize(incidents = n()) %>%
+  mutate(cumulative_incidents = cumsum(incidents)) %>%
+  ungroup()
+```
+
+```{r visualizing_by_perp_race}
+ggplot(nypd_by_perp_race, aes(x = date, y = cumulative_incidents, color = perp_race)) +
+  geom_point() +
+  theme(legend.position = 'right', axis.text.x = element_text(angle = 90)) +
+  xlab('Year') +
+  ylab('Cumulative Shooting Incidents') +
+  labs(title = 'NY Shooting Incidents by Perpetrator Race | 2006-2021') +
+  scale_x_date(date_breaks = 'year', labels = date_format('%y'))
+```
+
+
+
+# Modeling Data
+
+From the first of these plots, it appears shootings over time have been approximately linear, so let's examine that as a model.
+
+```{r lin_mod, echo=TRUE, message=FALSE, warning=FALSE}
+mod <- lm(cumulative_incidents ~ days_elapsed, data = nypd_all)
+summary(mod)
+```
+
+These results do seem to indicate a fairly tight linear correlation, so let's go ahead and plot the linear model's expected results against the real values.
+
+```{r visualizing_model, echo = TRUE, message = FALSE, error = FALSE}
+nypd_model <- nypd_all %>%
+  mutate(pred = predict(mod))
+
+nypd_model %>% ggplot() + 
+  geom_point(aes(x = days_elapsed, y = cumulative_incidents, color = 'blue')) +
+  geom_point(aes(x = days_elapsed, y = pred, color = 'red')) +
+  theme(legend.position = 'none')
+```
+
+This is actually quite interesting, as we can see that while most of the data does indeed fit close to the model, the datapoints themselves follow a distinct curve for most of the dataset before suddenly seeming to find a slope almost exactly parallel to the predicted slope only toward the very tail end of the dataset. This represents a significant deviation from how the data has performed relative to the model previously and is what I'll seek to examine in the next section.
+
+
+
+# Analyzing Data
+
+From our visualizations, we can see that almost across the board (regardless of demographics and location), there seems to be a large uptick in the number of shooting deaths sometime during 2020, which could coincide with the nationwide protests and civil unrest that occurred following the body-cam footage of the death of George Floyd being released on May 25, 2020. To see if that bears out, we'll take a look at the  maximum number of cases by day to see if we're correct in the assumption that the weeks immediately followed saw among the highest frequency of shooting incidents present in the dataset.
+
+```{r max_shooting_frequency, echo=TRUE, message=FALSE, warning=FALSE}
+shooting_frequency <- nypd %>%
+  group_by(year, month) %>%
+  summarize(incidents = n()) %>%
+  arrange(desc(incidents)) %>%
+  ungroup()
+
+shooting_frequency
+```
+
+Interestingly, no month in 2020 represented a high-water mark for shooting frequency, almost all which perhaps should have been evident based on the plots seeming to level off over time, especially after 2011-2012. In fact, each of the months which represented the top fifty shooting frequencies in New York occurred prior to 2013. However, the spike around the year 2020 still seems to be interesting, so let's look at just that portion of the data to see if the jump really was as drastic as the visualizations make it seem.
+
+
+```{r 2020_shooting_frequency_by_month, echo=TRUE, message=FALSE, warning=FALSE}
+shooting_frequency_2020 <- shooting_frequency %>%
+  filter(year == 2020) %>%
+  arrange(month)
+
+shooting_frequency_2020
+```
+
+Clearly, 2020 did see a marked increase in the number of reported shootings in New York (a >100% increase from April to May) and doesn't immediately see any kind of meaningful drop-off thereafter. So, does this represent the largest shift in the trend of shooting frequencies in the dataset? Let's take a look at how the months in question compare to overall to the six month averages of the months leading up to them.
+
+```{r rolling_averages, echo=TRUE, message=FALSE, warning=FALSE}
+roll <- function(x, n) { 
+   if (length(x) <= n) NA 
+   else rollapply(x, list(-seq(n)), mean, fill = NA)
+}
+
+frequency_vs_avg <- shooting_frequency %>%
+  arrange(year, month) %>%
+  mutate(lagging_6m_avg = roll(incidents, 6)) %>%
+  mutate(relative_increase = incidents/lagging_6m_avg - 1) %>%
+  arrange(desc(relative_increase))
+
+frequency_vs_avg
+```
+
+
+
+# Conclusion and Bias Identification
+
+As the results here indicate, the months following the George Floyd incident represented not only *a* large uptick in shootings, but the highest (+143%) and second-highest (+136%) increases in shootings in New York relative to a six-month lagging-average, with the following month of July representing the eighth-highest (+79.5%) increase in such incidents, making it period of largest deviation from the overall trends presented in the dataset.
+
+While these results are notable for their significant deviation from larger trends and uniquely trace back to a single nexus event, it is also imperative to acknowledge the inherent biases in the NYPD being the reporting entity of the raw data itself. The NYPD's issues with [race-relations](https://www.aclu.org/press-releases/nyclu-releases-report-analyzing-nypd-stop-and-frisk-data) and [misreporting](https://www.newsweek.com/nypd-members-charged-misreporting-crimes-354897) are both longstanding and well-documented, so it is entirely possible the PD over-reported data during this period given the racial underpinnings of the events that preceded it.
